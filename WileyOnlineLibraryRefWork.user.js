@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Wiley Refwork Downloader
 // @namespace    https://qinlili.bid
-// @version      0.1
+// @version      0.1.1
 // @description  EPUB支持
 // @author       琴梨梨
 // @match        https://onlinelibrary.wiley.com/doi/book/*
@@ -21,7 +21,7 @@
 
     //==========================================
     //          项目代号:SALISBURY
-    //                版本:0.1
+    //               版本:0.1.1
     //               琴梨梨 2025
     //           DEVELOPED IN VSCODE
     //     已添加内建依赖:SakiProgress 1.0.4
@@ -234,7 +234,7 @@
     const getDOI = url => url.substring(url.indexOf("10."));
     console.log(`==========================================
           项目代号:SALISBURY
-                版本:0.1
+               版本:0.1.1
                琴梨梨 2025
            DEVELOPED IN VSCODE
      已添加内建依赖:SakiProgress 1.0.4
@@ -346,10 +346,15 @@
                                         if (event.data.startsWith("blob")) {
                                             resolve(event.data);
                                             window.removeEventListener("message",listen);
+                                            document.body.removeChild(frame);
                                         }
                                     };
                                     window.addEventListener("message", listen, false);
-                                    setTimeout(()=>{resolve("Fail");},60000);
+                                    setTimeout(()=>{
+                                        resolve("Fail");
+                                        window.removeEventListener("message",listen);
+                                        document.body.removeChild(frame);
+                                    },240000);
                                 });
                             }
                             const result = await waitPDFGenerate();
