@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Wiley Refwork Downloader
 // @namespace    https://qinlili.bid
-// @version      0.1.1
+// @version      0.1.2
 // @description  EPUB支持
 // @author       琴梨梨
 // @match        https://onlinelibrary.wiley.com/doi/book/*
@@ -14,6 +14,8 @@
 // @license      MPLv2
 // @run-at       document-idle
 // @grant        none
+// @downloadURL https://github.com/qinlili23333/EbookDownloadScripts/raw/refs/heads/main/WileyOnlineLibraryRefWork.user.js
+// @updateURL https://github.com/qinlili23333/EbookDownloadScripts/raw/refs/heads/main/WileyOnlineLibraryRefWork.user.js
 // ==/UserScript==
 
 (async function () {
@@ -223,7 +225,7 @@
             if(!triesLeft){
                 throw err;
             }
-            return sleep(delay).then(() => fetchRetry(url, delay, triesLeft, fetchOptions));
+            return sleep(delay).then(() => fetchRetry(url,fetchOptions));
         }
         return fetch(url,fetchOptions).catch(onError);
     }
