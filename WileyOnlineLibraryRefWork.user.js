@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Wiley Refwork Downloader
 // @namespace    https://qinlili.bid
-// @version      0.1.2
+// @version      0.1.3
 // @description  EPUB支持
 // @author       琴梨梨
 // @match        https://onlinelibrary.wiley.com/doi/book/*
@@ -23,7 +23,7 @@
 
     //==========================================
     //          项目代号:SALISBURY
-    //               版本:0.1.1
+    //               版本:0.1.3
     //               琴梨梨 2025
     //           DEVELOPED IN VSCODE
     //     已添加内建依赖:SakiProgress 1.0.4
@@ -343,9 +343,11 @@
                             function waitPDFGenerate() {
                                 return new Promise(resolve => {
                                     frame.src="https://onlinelibrary.wiley.com/doi/full/"+item.doi;
+                                    let success=false;
                                     const listen=async (event) => {
                                         console.log(event.data)
                                         if (event.data.startsWith("blob")) {
+                                            success=true;
                                             resolve(event.data);
                                             window.removeEventListener("message",listen);
                                             document.body.removeChild(frame);
@@ -353,9 +355,11 @@
                                     };
                                     window.addEventListener("message", listen, false);
                                     setTimeout(()=>{
-                                        resolve("Fail");
-                                        window.removeEventListener("message",listen);
-                                        document.body.removeChild(frame);
+                                        if(!success){
+                                            resolve("Fail");
+                                            window.removeEventListener("message",listen);
+                                            document.body.removeChild(frame);
+                                        }
                                     },240000);
                                 });
                             }
