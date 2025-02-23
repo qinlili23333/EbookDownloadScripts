@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Sage Book Downloader
 // @namespace    https://qinlili.bid
-// @version      0.1
+// @version      0.1.1
 // @description  Sage不提供EPUB下载，那就咱自己搓一个出来！
 // @author       琴梨梨OvO
 // @match        https://methods.sagepub.com/*
@@ -9,6 +9,8 @@
 // @require      https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js
 // @grant        none
 // @run-at       document-idle
+// @downloadURL https://github.com/qinlili23333/EbookDownloadScripts/raw/refs/heads/main/SageBook.user.js
+// @updateURL   https://github.com/qinlili23333/EbookDownloadScripts/raw/refs/heads/main/SageBook.user.js
 // ==/UserScript==
 
 (async function() {
@@ -16,7 +18,7 @@
 
     //==========================================
     //          项目代号:CHERMSIDE
-    //                版本:0.1
+    //               版本:0.1.1
     //               琴梨梨 2025
     //         真有人会留意到我写的注释吗
     //     已添加内建依赖:SakiProgress 1.0.4
@@ -364,6 +366,7 @@ ${body}
                 toc.push({
                     title:title.innerText,
                     link:title.href,
+                    path:title.getAttribute("href"),
                     element:title,
                     level:0,
                     li:getParentLi(title)
@@ -404,9 +407,11 @@ ${body}
             function waitEPUBGenerate(link) {
                 return new Promise(resolve => {
                     frame.src=link;
+                    let success=false;
                     const listen=async (event) => {
                         console.log(event.data)
                         if (event.data.startsWith("next")) {
+                            success=true;
                             resolve(true);
                             window.removeEventListener("message",listen);
                             document.body.removeChild(frame);
@@ -414,9 +419,11 @@ ${body}
                     };
                     window.addEventListener("message", listen, false);
                     setTimeout(()=>{
-                        resolve(false);
-                        window.removeEventListener("message",listen);
-                        document.body.removeChild(frame);
+                        if(!success){
+                            resolve(false);
+                            window.removeEventListener("message",listen);
+                            document.body.removeChild(frame);
+                        }
                     },60000);
                 });
             }
@@ -442,14 +449,18 @@ ${body}
         //添加爬取的内容
         for(let i in toc){
             let cacheReq=await cacheDepot.match(toc[i].link);
-            let blob;
+            let text;
             if(cacheReq){
-                blob= await cacheReq.blob();
+                text= await cacheReq.text();
             }else{
                 alert("缓存出现问题，请刷新重试或反馈！");
                 throw new Error("缓存出现问题，请刷新重试或反馈！");
             }
-            files.push({name:"OEBPS/xhtml/Chap"+i+".xhtml",content:blob});
+            //执行链接替换
+            for(let i in toc){
+                text=text.replaceAll(toc[i].path,"Chap"+i+".xhtml");
+            }
+            files.push({name:"OEBPS/xhtml/Chap"+i+".xhtml",content:text});
         }
         //添加封面
         files.push({name:"OEBPS/Cover.jpg",content:await (await fetchRetry(document.querySelector(".lock-container>img").src)).blob()});
