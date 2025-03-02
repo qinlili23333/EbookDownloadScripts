@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OxfordRE Downloader
 // @namespace    https://qinlili.bid
-// @version      0.1
+// @version      0.2
 // @description  导出为EPUB
 // @author       琴梨梨
 // @match        https://oxfordre.com/*
@@ -9,13 +9,15 @@
 // @require      https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js
 // @grant        none
 // @run-at       document-idle
+// @downloadURL https://github.com/qinlili23333/EbookDownloadScripts/raw/refs/heads/main/OxfordRE.user.js
+// @updateURL   https://github.com/qinlili23333/EbookDownloadScripts/raw/refs/heads/main/OxfordRE.user.js
 // ==/UserScript==
 (async function() {
     'use strict';
 
     //==========================================
     //          项目代号:MOOROOKA
-    //                版本:0.1
+    //                版本:0.2
     //               琴梨梨 2025
     //         真有人会留意到我写的注释吗
     //     已添加内建依赖:SakiProgress 1.0.4
@@ -224,10 +226,12 @@
     function convertToValidFilename(string) {
         return (string.replace(/[\/|\\:*?"<>]/g, " "));
     }
+    const getDOI = url => url.substring(url.indexOf("10."));
     //https://stackoverflow.com/a/20285053
     const toDataURL = url => fetchRetry(url)
     .then(response => response.blob())
     .then(blob => new Promise((resolve, reject) => {
+        console.log(blob.type);
         const reader = new FileReader()
         reader.onloadend = () => resolve(reader.result)
         reader.onerror = reject
@@ -249,17 +253,68 @@
     }
 
     //提取指定元素的CSS，不包含inline项
-    const cssExtract=element=>{
+    const cssExtract=async element=>{
         //读取CSS统计，准备循环
         let queryList={};
         let fontString="";
+        const extractFontRule=async style=>{
+            if(style.cssText.indexOf("fontawesome")>0){
+                //过滤黑名单字体
+                return ""
+            }
+            const regexp=/url\("([^"]+)"\)/g;
+            const url=regexp.exec(style.cssText)["1"];
+            if(!url.startsWith("http")&&!url.startsWith("/")){
+                let newurl=await toDataURL(/^.*\//g.exec(style.parentStyleSheet.href)+url);
+                return style.cssText.replace(url,newurl);
+            }else{
+                let newurl=await toDataURL(url);
+                return style.cssText.replace(url,newurl);
+            }
+        }
         for(let sheet of document.styleSheets){
             if(sheet.media.mediaText=="print"){
                 continue;
             }
             for(let style of sheet.cssRules){
-                if(style.cssText.indexOf("@import")!=-1||style.cssText.indexOf("@font-face")!=-1){
-                    fontString+=style.cssText;
+                if(style.cssText.indexOf("@import")!=-1){
+                    //处理资源本地化
+                    let req=await fetchRetry(style.href, {
+                        "method": "GET",
+                        "mode": "cors",
+                        "credentials": "omit"
+                    })
+                    let cssText=await req.text();
+                    const stylesheet = new CSSStyleSheet();
+                    stylesheet.replaceSync(cssText);
+                    for(let substyle of stylesheet.rules){
+                        if(substyle.cssText.indexOf("@font-face")!=-1){
+                            if(substyle.style.getPropertyValue("src").length&&substyle.style.getPropertyValue("src").indexOf("data:")==-1&&substyle.style.getPropertyValue("src").indexOf("url")!=-1)
+                            {
+                                fontString+=await extractFontRule(substyle);
+                            }else{
+                                fontString+=substyle.cssText;
+                            }
+                            continue;
+                        }
+                        if(style.selectorText){
+                            if(queryList[style.selectorText]){
+                                queryList[style.selectorText].push(style);
+                            }else{
+                                queryList[style.selectorText]=[style];
+                            }
+                        }
+                    }
+                    continue;
+                }
+                if(style.cssText.indexOf("@font-face")!=-1){
+                    if(style.style.getPropertyValue("src").length&&style.style.getPropertyValue("src").indexOf("data:")==-1&&style.style.getPropertyValue("src").indexOf("url")!=-1)
+                    {
+                        fontString+=await extractFontRule(style);
+                    }else{
+                        fontString+=style.cssText;
+                    }
+                    continue;
                 }
                 if(style.selectorText){
                     if(queryList[style.selectorText]){
@@ -321,12 +376,12 @@ ${body}
 
 
     if(document.getElementById("readPanel")){
-        await sleep(3000);
+        await sleep(1500);
         //具体文章页面，执行XHTML规格化
         [].forEach.call(document.querySelectorAll("#pageBody>*"),ele=>{if(ele.className!="mainBase"){document.getElementById("pageBody").removeChild(ele);}});
         [].forEach.call(document.querySelectorAll(".findThisResource"),ele=>{ele.parentElement.removeChild(ele);})
         const target=document.getElementById("pageBody")
-        const css=cssExtract(target);
+        const css=await cssExtract(target);
         //图片转base64内联
         for(let img of target.getElementsByTagName("img")){
             img.src=await toDataURL(img.src);
@@ -347,6 +402,11 @@ ${body}
         //这样大致页面是能跑起来了
         let cacheDepot = await caches.open("DOWNLOADER_CACHE");
         await cacheDepot.put(location.href, new Response(xhtmlBuilder(document.getElementsByTagName("h1")[0]?document.getElementsByTagName("h1")[0].innerText:document.getElementsByTagName("h3")[0].innerText,css,originHTML), { status: 200,type:"cors", header: { "content-type": "application/xhtml+xml; charset=utf-8" } }));
+        //保存DOI映射关系以便后期替换
+        const doi=getDOI(document.querySelector(".doi").innerText);
+        let mirror=JSON.parse(localStorage.doiList);
+        mirror[location.pathname]=doi;
+        localStorage.doiList=JSON.stringify(mirror);
         if(window.self !== window.top){
             window.parent.postMessage("next", "*");
         }
@@ -362,6 +422,7 @@ ${body}
             }
             localStorage.downloaderStatus="RUN";
             localStorage.downloaderCache="[]";
+            localStorage.doiList="{}";
             localStorage.downloadCollection=location.pathname.replaceAll("/","");
             location.href="https://oxfordre.com/"+localStorage.downloadCollection+"/browse?avail=unlocked&avail_3=unlocked&avail_4=free&page=1&pageSize=20&sort=titlesort&subSite="+localStorage.downloadCollection;
         });
@@ -376,7 +437,8 @@ ${body}
             cache.push({
                 title:title.innerText,
                 //过滤掉跟踪参数
-                link:url.origin+url.pathname
+                link:url.origin+url.pathname,
+                path:url.pathname
             });
         });
         localStorage.downloaderCache=JSON.stringify(cache);
@@ -403,6 +465,7 @@ ${body}
                 }
             }
             cache=newcache;
+            localStorage.downloaderCache=JSON.stringify(cache);
             let cacheDepot = await caches.open("DOWNLOADER_CACHE");
             const prepareFile=async link=>{
                 console.log(link);
@@ -437,7 +500,7 @@ ${body}
             }
             for(let i in cache){
                 if (cache.hasOwnProperty(i)) {
-                    SakiProgress.setPercent(5+i/cache.length*70);
+                    SakiProgress.setPercent(5+i/cache.length*60);
                     SakiProgress.setText("正在爬取...["+(-(-1-i))+"/"+cache.length+"]");
                     if(!await cacheDepot.match(cache[i].link)){
                         while(!await prepareFile(cache[i].link)){
@@ -445,7 +508,7 @@ ${body}
                     }
                 }
             }
-            SakiProgress.setPercent(75);
+            SakiProgress.setPercent(65);
             SakiProgress.setText("生成文件结构...");
             let files=[]
             files.push({name:"mimetype",content:"application/epub+zip"});
@@ -454,8 +517,12 @@ ${body}
 <rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles>
 </container>`})
             //添加爬取的内容
+            let doiList=JSON.parse(localStorage.doiList);
             for(let i in cache){
                 if (cache.hasOwnProperty(i)) {
+                    SakiProgress.setPercent(65+i/cache.length*15);
+                    SakiProgress.setText("正在执行后处理...["+(-(-1-i))+"/"+cache.length+"]");
+                    //await sleep(1);
                     let cacheReq=await cacheDepot.match(cache[i].link);
                     let text;
                     if(cacheReq){
@@ -463,6 +530,18 @@ ${body}
                     }else{
                         alert("缓存出现问题，请刷新重试或反馈！");
                         throw new Error("缓存出现问题，请刷新重试或反馈！");
+                    }
+                    //执行链接替换
+                    //分离最后一段，避免浪费大量时间在处理base64后的字体字符串上，提速114.514%
+                    let [text1,text2]=text.split("Related Articles");
+                    if(text2){
+                        for(let i in cache){
+                            if (cache.hasOwnProperty(i)) {
+                                text2=text2.replaceAll(`href="${cache[i].path}"`,`href="${"Chap"+i+".xhtml"}"`);
+                                text2=text2.replaceAll(`href="/${localStorage.downloadCollection+"/viewbydoi/"+doiList[cache[i].path]}"`,`href="${"Chap"+i+".xhtml"}"`);
+                            }
+                        }
+                        text=text1+"Related Articles"+text2;
                     }
                     files.push({name:"OEBPS/xhtml/Chap"+i+".xhtml",content:text});
                 }
@@ -526,7 +605,6 @@ ${opflist}</manifest>
 ${spinelist}</spine>
 </package>
 `;
-            console.log(opfText);
             files.push({name:"OEBPS/content.opf",content:opfText});
             let zip = new JSZip();
             for(let i=0;i<files.length;i++){
@@ -552,234 +630,5 @@ ${spinelist}</spine>
             SakiProgress.clearProgress();
             SakiProgress.setText("下载成功！");
         }
-    }
-    if(false){
-        SakiProgress.init();
-        SakiProgress.showDiv();
-        SakiProgress.setText("准备基础信息...");
-        await sleep(3000);
-        let isbn=document.querySelector("#SlideHolderDesktop > div:nth-child(1) > ul > li:nth-child(2)").innerText;
-        isbn=isbn.substring(isbn.indexOf(":")+1)
-        let title=document.querySelector("#skip-link").innerText;
-        let author=document.querySelector("#SlideHolder > ul > li:nth-child(1)").innerText;
-        author=author.substring(author.indexOf(":")+1);
-        let publisher=document.querySelector("#SlideHolder > ul > li:nth-child(2)").innerText;
-        publisher=publisher.substring(publisher.indexOf(":")+1);
-        let year=document.querySelector("#SlideHolder > ul > li:nth-child(3) > ul > li:nth-child(1)").innerText;
-        year=year.substring(year.indexOf(":")+1);
-
-        let toc=[];
-        const getParentLi=title=>{
-            if(title.parentElement.tagName=="LI"){
-                return title.parentElement;
-            }else{
-                if(title.parentElement.parentElement){
-                    return getParentLi(title.parentElement);
-                }else{
-                    return document.createElement("li");
-                }
-            }
-        }
-        [].forEach.call(document.querySelectorAll(".content-tab>li.k-item"),ele=>{
-            //目录大类别，不用分类
-            [].forEach.call(ele.querySelectorAll("a:not(.opener)"),title=>{
-                //要计入目录的标题
-                toc.push({
-                    title:title.innerText,
-                    link:title.href,
-                    path:title.getAttribute("href"),
-                    element:title,
-                    level:0,
-                    li:getParentLi(title)
-                });
-            })
-        })
-        //处理目录层级
-        const recursiveFilterLevel=()=>{
-            let oldtoc=toc.slice();
-            for(let i in toc){
-                toc.forEach(title=>{
-                    if(isInside(toc[i].li,title.li)){
-                        toc[i].level=title.level+1;
-                    }
-                })
-            }
-            let changed=false;
-            for(let i in toc){
-                if(toc[i].level!=oldtoc[i].level){
-                    changed=true;
-                }
-            }
-            if(changed){
-                return recursiveFilterLevel();
-            }
-            return;
-        }
-        recursiveFilterLevel();
-        console.log(toc);
-        SakiProgress.setPercent(4);
-        SakiProgress.setText("准备爬取...");
-        let cacheDepot = await caches.open("DOWNLOADER_CACHE");
-        const prepareFile=async link=>{
-            console.log(link);
-            let frame=document.createElement("iframe");
-            frame.style="width:100vw;height:100vh";
-            document.body.appendChild(frame);
-            function waitEPUBGenerate(link) {
-                return new Promise(resolve => {
-                    frame.src=link;
-                    let success=false;
-                    const listen=async (event) => {
-                        console.log(event.data)
-                        if (event.data.startsWith("next")) {
-                            success=true;
-                            resolve(true);
-                            window.removeEventListener("message",listen);
-                            document.body.removeChild(frame);
-                        }
-                    };
-                    window.addEventListener("message", listen, false);
-                    setTimeout(()=>{
-                        if(!success){
-                            resolve(false);
-                            window.removeEventListener("message",listen);
-                            document.body.removeChild(frame);
-                        }
-                    },60000);
-                });
-            }
-            const result = await waitEPUBGenerate(link);
-            return result;
-        }
-        for(let i in toc){
-            SakiProgress.setPercent(5+i/toc.length*70);
-            SakiProgress.setText("正在爬取...["+(-(-1-i))+"/"+toc.length+"]");
-            if(!await cacheDepot.match(toc[i].link)){
-                while(!await prepareFile(toc[i].link)){
-                };
-            }
-        }
-        SakiProgress.setPercent(75);
-        SakiProgress.setText("生成文件结构...");
-        let files=[]
-        files.push({name:"mimetype",content:"application/epub+zip"});
-        files.push({name:"META-INF/container.xml",content:`<?xml version="1.0"?>
-<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
-<rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles>
-</container>`})
-        //添加爬取的内容
-        for(let i in toc){
-            let cacheReq=await cacheDepot.match(toc[i].link);
-            let text;
-            if(cacheReq){
-                text= await cacheReq.text();
-            }else{
-                alert("缓存出现问题，请刷新重试或反馈！");
-                throw new Error("缓存出现问题，请刷新重试或反馈！");
-            }
-            //执行链接替换
-            for(let i in toc){
-                text=text.replaceAll(toc[i].path,"Chap"+i+".xhtml");
-            }
-            files.push({name:"OEBPS/xhtml/Chap"+i+".xhtml",content:text});
-        }
-        //添加封面
-        files.push({name:"OEBPS/Cover.jpg",content:await (await fetchRetry(document.querySelector(".lock-container>img").src)).blob()});
-        //生成toc.ncx
-        let tocnav="";
-        let lastlevel=-1;
-        for(let i in toc){
-            tocnav+=`
-</navPoint>`.repeat(lastlevel-toc[i].level+1);
-            tocnav+=`<navPoint id="toc${i+1}" playOrder="${i+1}">
-<navLabel><text>${toc[i].title}</text></navLabel>
-<content src="${"/xhtml/Chap"+i+".xhtml"}"/>`;
-            lastlevel=toc[i].level;
-        }
-        tocnav+=`
-</navPoint>`.repeat(lastlevel+1);
-
-        let maxlevel=1;
-        for(let i of toc){
-            maxlevel=maxlevel<i.level+1?i.level+1:maxlevel;
-        }
-        let tocText=`<?xml version="1.0" encoding="UTF-8"?>
-<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1" xml:lang="en-US">
-<head>
-<meta name="dtb:uid" content="${isbn}"/>
-<meta name="dtb:depth" content="${maxlevel}"/>
-<meta name="dtb:totalPageCount" content="0"/>
-<meta name="dtb:maxPageNumber" content="0"/>
-</head>
-<docTitle>
-<text>${title}</text>
-</docTitle>
-<navMap>
-${tocnav}
-</navMap>
-</ncx>`;
-        files.push({name:"OEBPS/toc.ncx",content:tocText});
-        //生成content.opf
-        let opflist="";
-        let spinelist="";
-        for(let i in toc){
-            opflist+=`<item href="${"xhtml/Chap"+i+".xhtml"}" id="${"Chap"+i}" media-type="application/xhtml+xml"/>
-`;
-            spinelist+=`<itemref idref="${"Chap"+i}"/>
-`;
-        }
-
-        let opfText=`<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="isbn9781040075340" version="3.0" xml:lang="en">
-<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
-<dc:title>${title}</dc:title>
-<dc:creator id="creator1">${author.replaceAll("&",";")}</dc:creator><meta property="role" refines="#creator1" scheme="marc:relators">aut</meta>
-<dc:format>application/ePub</dc:format>
-<dc:date>${year}</dc:date>
-<dc:identifier id="isbn${isbn}">${isbn}</dc:identifier>
-<meta property="identifier-type" refines="#isbn${isbn}" scheme="onix:codelist5">15</meta>
-<dc:source id="isbn${isbn}">${isbn}</dc:source>
-<meta property="source-of" refines="#isbn${isbn}">pagination</meta>
-<dc:language>en</dc:language>
-<dc:publisher>${publisher}</dc:publisher>
-<dc:relation>${isbn}</dc:relation>
-<meta property="dcterms:modified">${(new Date()).toISOString()}</meta>
-<meta content="cover-image" name="cover"/>
-<meta property="schema:accessMode">textual</meta>
-<meta property="schema:accessMode">visual</meta>
-<meta property="schema:accessModeSufficient">textual</meta>
-</metadata>
-<manifest>
-<item href="Cover.jpg" id="cover-image" media-type="image/jpeg" properties="cover-image"/>
-<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
-${opflist}</manifest>
-<spine>
-${spinelist}</spine>
-</package>
-`;
-        console.log(opfText);
-        files.push({name:"OEBPS/content.opf",content:opfText});
-        let zip = new JSZip();
-        for(let i=0;i<files.length;i++){
-            SakiProgress.setPercent(80+i/files.length*10);
-            SakiProgress.setText("正在创建压缩包...["+(i+1)+"/"+files.length+"]");
-            await sleep(1);
-            zip.file(files[i].name, files[i].content);
-        }
-        await sleep(100);
-        SakiProgress.setPercent(90);
-        SakiProgress.setText("正在打包...");
-        let zipFile = await zip.generateAsync({
-            type: "blob",
-            compression: "DEFLATE",
-            compressionOptions: {
-                level: 9
-            }
-        });
-        SakiProgress.setPercent(97);
-        SakiProgress.setText("正在导出...");
-        await sleep(2000);
-        dlFile(URL.createObjectURL(zipFile), convertToValidFilename(title)+ ".epub");
-        SakiProgress.clearProgress();
-        SakiProgress.setText("下载成功！");
     }
 })();
