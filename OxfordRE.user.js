@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OxfordRE Downloader
 // @namespace    https://qinlili.bid
-// @version      0.2
+// @version      0.3
 // @description  导出为EPUB
 // @author       琴梨梨
 // @match        https://oxfordre.com/*
@@ -16,10 +16,10 @@
     'use strict';
 
     //==========================================
-    //          项目代号:MOOROOKA
-    //                版本:0.2
+    //           项目代号:MOOROOKA
+    //                版本:0.3
     //               琴梨梨 2025
-    //         真有人会留意到我写的注释吗
+    //          赶在飓风之前写完的更新
     //     已添加内建依赖:SakiProgress 1.0.4
     //            本项目完全免费开源
     //==========================================
@@ -28,7 +28,6 @@
     //       推荐b站关注:帅比笙歌超可爱OvO
     //==========================================
     //请在下方调整你的偏好
-
     const config = {
         //CSS保存的激进程度，这个版本目前没用但我先放在这里
         cssFilterAggressiveLevel:0,
@@ -258,6 +257,22 @@
         let queryList={};
         let fontString="";
         const extractFontRule=async style=>{
+            const cacheBySHA256=async url=>{
+                const resp=await fetchRetry(url);
+                const hashBuffer=await window.crypto.subtle.digest("SHA-256", await (await resp.clone().blob()).arrayBuffer());
+                const hashArray = Array.from(new Uint8Array(hashBuffer)); // convert buffer to byte array
+                const hashHex = hashArray
+                .map((b) => b.toString(16).padStart(2, "0"))
+                .join(""); // convert bytes to hex string
+                let cacheDepot = await caches.open("DOWNLOADER_CACHE");
+                let cached=JSON.parse(localStorage.resourceCache);
+                if(cached.indexOf(hashHex)==-1){
+                    cached.push(hashHex);
+                    localStorage.resourceCache=JSON.stringify(cached);
+                }
+                await cacheDepot.put("/SHA"+hashHex, resp.clone());
+                return "SHA"+hashHex;
+            }
             if(style.cssText.indexOf("fontawesome")>0){
                 //过滤黑名单字体
                 return ""
@@ -265,10 +280,10 @@
             const regexp=/url\("([^"]+)"\)/g;
             const url=regexp.exec(style.cssText)["1"];
             if(!url.startsWith("http")&&!url.startsWith("/")){
-                let newurl=await toDataURL(/^.*\//g.exec(style.parentStyleSheet.href)+url);
+                let newurl=await cacheBySHA256(/^.*\//g.exec(style.parentStyleSheet.href)+url);
                 return style.cssText.replace(url,newurl);
             }else{
-                let newurl=await toDataURL(url);
+                let newurl=await cacheBySHA256(url);
                 return style.cssText.replace(url,newurl);
             }
         }
@@ -377,10 +392,14 @@ ${body}
 
     if(document.getElementById("readPanel")){
         await sleep(1500);
+        let cacheDepot = await caches.open("DOWNLOADER_CACHE");
         //具体文章页面，执行XHTML规格化
         [].forEach.call(document.querySelectorAll("#pageBody>*"),ele=>{if(ele.className!="mainBase"){document.getElementById("pageBody").removeChild(ele);}});
-        [].forEach.call(document.querySelectorAll(".findThisResource"),ele=>{ele.parentElement.removeChild(ele);})
-        const target=document.getElementById("pageBody")
+        [].forEach.call(document.querySelectorAll(".findThisResource"),ele=>{ele.parentElement.removeChild(ele);});
+        [].forEach.call(document.querySelectorAll("[alt='unlocked']"),ele=>{ele.parentElement.removeChild(ele);});
+        //去除所有隐藏元素节约体积
+        const target=document.getElementById("pageBody");
+        [].forEach.call(target.querySelectorAll("*"),ele=>{if(getComputedStyle(ele).display=="none"){ele.parentElement.removeChild(ele);}});
         const css=await cssExtract(target);
         //图片转base64内联
         for(let img of target.getElementsByTagName("img")){
@@ -400,7 +419,6 @@ ${body}
         //虽然regex处理html可能有问题，但这里的xhtml没有css也没有脚本我不信这他妈还能出问题
         let originHTML=`<div class="twoColumnOmega" id="contentWrapper"><div id="columnWrapper"><div class="clearfix" id="pageBody"><div id="mainContent" class="mainBase">`+target.outerHTML.replaceAll('iwanttoputaslashherebutchromekeepsformattingitbackwhenusingouterhtml=""',"/").replaceAll(/>[\s\n]+</g,"><")+`</div></div></div></div>`;
         //这样大致页面是能跑起来了
-        let cacheDepot = await caches.open("DOWNLOADER_CACHE");
         await cacheDepot.put(location.href, new Response(xhtmlBuilder(document.getElementsByTagName("h1")[0]?document.getElementsByTagName("h1")[0].innerText:document.getElementsByTagName("h3")[0].innerText,css,originHTML), { status: 200,type:"cors", header: { "content-type": "application/xhtml+xml; charset=utf-8" } }));
         //保存DOI映射关系以便后期替换
         const doi=getDOI(document.querySelector(".doi").innerText);
@@ -423,6 +441,7 @@ ${body}
             localStorage.downloaderStatus="RUN";
             localStorage.downloaderCache="[]";
             localStorage.doiList="{}";
+            localStorage.resourceCache="[]";
             localStorage.downloadCollection=location.pathname.replaceAll("/","");
             location.href="https://oxfordre.com/"+localStorage.downloadCollection+"/browse?avail=unlocked&avail_3=unlocked&avail_4=free&page=1&pageSize=20&sort=titlesort&subSite="+localStorage.downloadCollection;
         });
@@ -520,7 +539,7 @@ ${body}
             let doiList=JSON.parse(localStorage.doiList);
             for(let i in cache){
                 if (cache.hasOwnProperty(i)) {
-                    SakiProgress.setPercent(65+i/cache.length*15);
+                    SakiProgress.setPercent(65+i/cache.length*10);
                     SakiProgress.setText("正在执行后处理...["+(-(-1-i))+"/"+cache.length+"]");
                     //await sleep(1);
                     let cacheReq=await cacheDepot.match(cache[i].link);
@@ -583,7 +602,15 @@ ${tocnav}
 `;
                 }
             }
-
+            SakiProgress.setPercent(75);
+            SakiProgress.setText("整合资源文件...");
+            //把缓存的资源文件添加到列表
+            const cachedRes=JSON.parse(localStorage.resourceCache);
+            for(let i=0;i<cachedRes.length;i++){
+                files.push({name:"OEBPS/xhtml/SHA"+cachedRes[i],content:await (await cacheDepot.match("/SHA"+cachedRes[i])).blob()});
+                    opflist+=`<item href="${"xhtml/SHA"+cachedRes[i]}" id="${cachedRes[i]}" media-type="application/octet-stream"/>
+`;
+            }
             let opfText=`<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="isbn9781040075340" version="3.0" xml:lang="en">
 <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
 <dc:title>${document.querySelector("#headerLogo > a > span").innerText}</dc:title>
@@ -629,6 +656,7 @@ ${spinelist}</spine>
             dlFile(URL.createObjectURL(zipFile), convertToValidFilename(document.querySelector("#headerLogo > a > span").innerText)+ ".epub");
             SakiProgress.clearProgress();
             SakiProgress.setText("下载成功！");
+            localStorage.downloaderStatus="IDLE";
         }
     }
 })();
