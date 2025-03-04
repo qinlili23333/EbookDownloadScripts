@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Sage Book Downloader
 // @namespace    https://qinlili.bid
-// @version      0.1.1
+// @version      0.1.2
 // @description  Sage不提供EPUB下载，那就咱自己搓一个出来！
 // @author       琴梨梨OvO
 // @match        https://methods.sagepub.com/*
@@ -18,7 +18,7 @@
 
     //==========================================
     //          项目代号:CHERMSIDE
-    //               版本:0.1.1
+    //               版本:0.1.2
     //               琴梨梨 2025
     //         真有人会留意到我写的注释吗
     //     已添加内建依赖:SakiProgress 1.0.4
@@ -470,9 +470,9 @@ ${body}
         for(let i in toc){
             tocnav+=`
 </navPoint>`.repeat(lastlevel-toc[i].level+1);
-            tocnav+=`<navPoint id="toc${i+1}" playOrder="${i+1}">
+            tocnav+=`<navPoint id="Chap${-(-1-i)}" playOrder="${-(-1-i)}">
 <navLabel><text>${toc[i].title}</text></navLabel>
-<content src="${"/xhtml/Chap"+i+".xhtml"}"/>`;
+<content src="${"xhtml/Chap"+i+".xhtml"}"/>`;
             lastlevel=toc[i].level;
         }
         tocnav+=`
@@ -487,8 +487,6 @@ ${body}
 <head>
 <meta name="dtb:uid" content="${isbn}"/>
 <meta name="dtb:depth" content="${maxlevel}"/>
-<meta name="dtb:totalPageCount" content="0"/>
-<meta name="dtb:maxPageNumber" content="0"/>
 </head>
 <docTitle>
 <text>${title}</text>
@@ -516,7 +514,6 @@ ${tocnav}
 <dc:date>${year}</dc:date>
 <dc:identifier id="isbn${isbn}">${isbn}</dc:identifier>
 <meta property="identifier-type" refines="#isbn${isbn}" scheme="onix:codelist5">15</meta>
-<dc:source id="isbn${isbn}">${isbn}</dc:source>
 <meta property="source-of" refines="#isbn${isbn}">pagination</meta>
 <dc:language>en</dc:language>
 <dc:publisher>${publisher}</dc:publisher>
@@ -531,7 +528,7 @@ ${tocnav}
 <item href="Cover.jpg" id="cover-image" media-type="image/jpeg" properties="cover-image"/>
 <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
 ${opflist}</manifest>
-<spine>
+<spine toc="ncx">
 ${spinelist}</spine>
 </package>
 `;
