@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OxfordRE Downloader
 // @namespace    https://qinlili.bid
-// @version      0.3
+// @version      0.3.1
 // @description  导出为EPUB
 // @author       琴梨梨
 // @match        https://oxfordre.com/*
@@ -17,7 +17,7 @@
 
     //==========================================
     //           项目代号:MOOROOKA
-    //                版本:0.3
+    //               版本:0.3.1
     //               琴梨梨 2025
     //          赶在飓风之前写完的更新
     //     已添加内建依赖:SakiProgress 1.0.4
@@ -570,9 +570,9 @@ ${body}
             let lastlevel=-1;
             for(let i in cache){
                 if (cache.hasOwnProperty(i)) {
-                    tocnav+=`<navPoint id="toc${i+1}" playOrder="${i+1}">
+                    tocnav+=`<navPoint id="Chap${-(-1-i)}" playOrder="${-(-1-i)}">
 <navLabel><text>${cache[i].title}</text></navLabel>
-<content src="${"/xhtml/Chap"+i+".xhtml"}"/>
+<content src="${"xhtml/Chap"+i+".xhtml"}"/>
 </navPoint>`;
                 }
             }
@@ -628,7 +628,7 @@ ${tocnav}
 <item href="Cover.jpg" id="cover-image" media-type="image/jpeg" properties="cover-image"/>
 <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
 ${opflist}</manifest>
-<spine>
+<spine toc="ncx">
 ${spinelist}</spine>
 </package>
 `;
