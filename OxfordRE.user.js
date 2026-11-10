@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OxfordRE Downloader
 // @namespace    https://qinlili.bid
-// @version      0.3.1
+// @version      0.3.2
 // @description  导出为EPUB
 // @author       琴梨梨
 // @match        https://oxfordre.com/*
@@ -611,7 +611,7 @@ ${tocnav}
                     opflist+=`<item href="${"xhtml/SHA"+cachedRes[i]}" id="${cachedRes[i]}" media-type="application/octet-stream"/>
 `;
             }
-            let opfText=`<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="isbn9781040075340" version="3.0" xml:lang="en">
+            let opfText=`<package xmlns="http://www.idpf.org/2007/opf" version="3.0" xml:lang="en">
 <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
 <dc:title>${document.querySelector("#headerLogo > a > span").innerText}</dc:title>
 <dc:format>application/ePub</dc:format>
