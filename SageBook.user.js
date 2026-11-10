@@ -514,7 +514,6 @@ ${tocnav}
 <dc:date>${year}</dc:date>
 <dc:identifier id="isbn${isbn}">${isbn}</dc:identifier>
 <meta property="identifier-type" refines="#isbn${isbn}" scheme="onix:codelist5">15</meta>
-<meta property="source-of" refines="#isbn${isbn}">pagination</meta>
 <dc:language>en</dc:language>
 <dc:publisher>${publisher}</dc:publisher>
 <dc:relation>${isbn}</dc:relation>
