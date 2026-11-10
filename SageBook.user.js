@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Sage Book Downloader
 // @namespace    https://qinlili.bid
-// @version      0.1.2
+// @version      0.1.3
 // @description  Sage不提供EPUB下载，那就咱自己搓一个出来！
 // @author       琴梨梨OvO
 // @match        https://methods.sagepub.com/*
@@ -506,7 +506,7 @@ ${tocnav}
 `;
         }
 
-        let opfText=`<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="isbn9781040075340" version="3.0" xml:lang="en">
+        let opfText=`<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="isbn${isbn}" version="3.0" xml:lang="en">
 <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
 <dc:title>${title}</dc:title>
 <dc:creator id="creator1">${author.replaceAll("&",";")}</dc:creator><meta property="role" refines="#creator1" scheme="marc:relators">aut</meta>
